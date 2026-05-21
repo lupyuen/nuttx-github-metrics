@@ -16,239 +16,51 @@ use struson::{
 const JOB_PR_JSON: &str = "../nuttx-github-jobs/nuttx-github-jobs.json";
 
 fn main() {
-    // Merge the Job-PR JSON with the Build JSON for each Run ID (Job ID) in the Error and Warning Folders
-    let merged_json_array = merge_job_pr_with_build();
-
     // Fetch the Recent Jobs from the Job-PR JSON
-    let recent_jobs = fetch_recent_jobs();
-    println!("Recent Jobs: {recent_jobs}\n");
+    let (recent_jobs, recent_jobs_json) = fetch_recent_jobs();
+    println!("Recent Jobs: {recent_jobs:?}\n");
 
-    // Count the number of Builds for each PR in the Recent Jobs
-    let pr_build_counts = count_pr_builds(&recent_jobs);
-    println!("PR Build Counts: {pr_build_counts:?}\n");
+    // // Merge the Job-PR JSON with the Build JSON for each Run ID (Job ID) in the Error and Warning Folders
+    // let merged_json_array = merge_job_pr_with_build();
 
-    // Inject the Build Counts into the Recent Jobs JSON
-    let mut recent_jobs_with_counts = recent_jobs.clone();
-    for job_pr in recent_jobs_with_counts.as_array_mut().unwrap() {
-        let pr_number = job_pr["pr_number"].as_u64().unwrap_or_default();
-        let build_count = pr_build_counts.get(&pr_number).cloned().unwrap_or(0);
-        job_pr.as_object_mut().unwrap().insert("build_count".to_string(), serde_json::Value::Number(build_count.into()));
-    }
+    // // Count the number of Builds for each PR in the Recent Jobs
+    // let pr_build_counts = count_pr_builds(&recent_jobs);
+    // println!("PR Build Counts: {pr_build_counts:?}\n");
 
-    // Render the Recent Jobs as HTML Table
-    let recent_jobs_html = render_recent_jobs(&recent_jobs_with_counts);
-    println!("Recent Jobs HTML:\n{recent_jobs_html}\n");
+    // // Inject the Build Counts into the Recent Jobs JSON
+    // let mut recent_jobs_with_counts = recent_jobs.clone();
+    // for job_pr in recent_jobs_with_counts.as_array_mut().unwrap() {
+    //     let pr_number = job_pr["pr_number"].as_u64().unwrap_or_default();
+    //     let build_count = pr_build_counts.get(&pr_number).cloned().unwrap_or(0);
+    //     job_pr.as_object_mut().unwrap().insert("build_count".to_string(), serde_json::Value::Number(build_count.into()));
+    // }
 
-    // Write the Recent Jobs JSON and the Merged Job-PR-Build JSON to Static Files
-    let merged_json_array_str = serde_json::to_string_pretty(&merged_json_array).unwrap();
-    std::fs::write("../nuttx-github-jobs/build-monitor.json", merged_json_array_str).unwrap();
-    let recent_jobs_json_str = serde_json::to_string_pretty(&recent_jobs_with_counts).unwrap();
-    std::fs::write("../nuttx-github-jobs/build-monitor-pr.json", recent_jobs_json_str).unwrap();
+    // // Render the Recent Jobs as HTML Table
+    // let recent_jobs_html = render_recent_jobs(&recent_jobs_with_counts);
+    // println!("Recent Jobs HTML:\n{recent_jobs_html}\n");
 
-    // Generate the HTML Table from Merged Job-PR-Build JSON
-    let table = render_job_pr_build(&merged_json_array);
-    let html = html_header(&recent_jobs_html) + 
-        &table.to_html_string() +
-        html_footer();
-    println!("html:\n{html}");
+    // // Write the Recent Jobs JSON and the Merged Job-PR-Build JSON to Static Files
+    // let merged_json_array_str = serde_json::to_string_pretty(&merged_json_array).unwrap();
+    // std::fs::write("../nuttx-github-jobs/build-monitor.json", merged_json_array_str).unwrap();
+    // let recent_jobs_json_str = serde_json::to_string_pretty(&recent_jobs_with_counts).unwrap();
+    // std::fs::write("../nuttx-github-jobs/build-monitor-pr.json", recent_jobs_json_str).unwrap();
 
-    // Write the HTML Table to a Static File
-    std::fs::write("../nuttx-github-jobs/build-monitor.html", html).unwrap()
+    // // Generate the HTML Table from Merged Job-PR-Build JSON
+    // let table = render_job_pr_build(&merged_json_array);
+    // let html = html_header(&recent_jobs_html) + 
+    //     &table.to_html_string() +
+    //     html_footer();
+    // println!("html:\n{html}");
+
+    // // Write the HTML Table to a Static File
+    // std::fs::write("../nuttx-github-jobs/build-monitor.html", html).unwrap()
 }
 
-/// Merge the Job-PR JSON with the Build JSON for each Run ID (Job ID) in the Error and Warning Folders
-fn merge_job_pr_with_build() -> Vec<serde_json::Value> {
-    // Remember the Merged Job-PR-Build JSON for each Run ID
-    let mut merged_json_array = Vec::<serde_json::Value>::new();
-
-    // Iterate through the Error and Warning Folders
-    for folder in ["error", "warning"] {
-        let path = format!("../nuttx-github-jobs/{folder}");
-        if !std::path::Path::new(&path).exists() {
-            println!("Folder {path} does not exist. Please parse-nuttx-builds first.");
-            return merged_json_array;
-        }
-
-        // Iterate Backwards through all Run IDs (Job IDs) in the Error and Warning Folders
-        // Like ../nuttx-github-jobs/error/23712816820
-        let mut entries: Vec<_> = read_dir(&path).unwrap().collect();
-        entries.sort_by_key(|entry| entry.as_ref().unwrap().path());
-        for entry in entries.into_iter().rev() {
-            let entry = entry.unwrap();
-            let path = entry.path();
-            println!("Found Build Path: {path:?}");
-
-            // Run ID is the last part of the path: 23712816820
-            let run_id = path.file_name().unwrap().to_str().unwrap();
-            if run_id.starts_with(".") { continue; }
-            let run_id = run_id.parse::<u64>();
-            let run_id = match run_id {
-                Ok(id) => id,
-                Err(e) => {
-                    println!("Skipping invalid Run ID: {e}");
-                    sleep(Duration::from_secs(1));
-                    continue;
-                }
-            };
-            println!("Run ID: {run_id}");
-
-            // For each Run ID (Job ID), Fetch the Job-PR JSON
-            let job_pr = fetch_job_pr(run_id);
-            let job_pr = match job_pr {
-                Ok(json) => json,
-                Err(e) => {
-                    println!("Error fetching Job-PR JSON: {e}");
-                    sleep(Duration::from_secs(1));
-                    continue;
-                }
-            };
-
-            // Stop iterating when Job Timestamp is too old
-            let job_pr_json: serde_json::Value = serde_json::from_str(&job_pr).unwrap();
-            let timestamp = job_pr_json["job_startedAt"].as_str().unwrap();
-            let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp).unwrap();
-            if timestamp < chrono::Utc::now() - chrono::Duration::days(28) {
-                println!("Build is too old. Stopping iteration for folder {folder}");
-                break;
-            }
-
-            // Generate the Merged Job-PR-Build JSON for each Run ID:
-            // Iterate through all Build JSON files in the folder
-            // Like ../nuttx-github-jobs/error/23712816820/xtensa-03:lckfb-szpi-esp32s3:uvc.json
-            let entries: Vec<_> = read_dir(&path).unwrap().collect();
-            for entry in entries.into_iter() {
-                let entry = entry.unwrap();
-                let path = entry.path().to_str().unwrap().to_string();
-                println!("Found Build JSON: {path}");
-
-                // Merge the Build JSON into the Job-PR JSON
-                let merged_json = merge_build_json(&path, &job_pr);
-                let merged_json = match merged_json {
-                    Ok(json) => json,
-                    Err(e) => {
-                        println!("Error merging Build JSON: {e}");
-                        sleep(Duration::from_secs(1));
-                        continue;
-                    }
-                };
-                println!("merged_json:\n{merged_json}\n");
-
-                // Add the Merged JSON into a JSON Array
-                let merged_json_value: serde_json::Value = serde_json::from_str(&merged_json).unwrap();
-                merged_json_array.push(merged_json_value.clone());
-            }
-        }
-    }
-
-    // Sort the JSON Array by Timestamp in Descending Order (Latest First)
-    merged_json_array.sort_by(|a, b| {
-        let a_timestamp = a["build_timestamp"].as_str().unwrap_or_default();
-        let b_timestamp = b["build_timestamp"].as_str().unwrap_or_default();
-        b_timestamp.cmp(a_timestamp)
-    });    
-    merged_json_array
-}
-
-/// Render the Merged Job-PR-Build JSON Array as HTML Table Rows
-fn render_job_pr_build(merged_json_array: &Vec<serde_json::Value>) -> Table {
-    let mut table = Table::new()
-        .with_attributes([("class", "w-full text-left border-collapse whitespace-nowrap md:whitespace-normal")])
-        .with_custom_header_row(
-            TableRow::new()
-                .with_attributes([("class", "bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500 font-semibold")])
-                .with_cell(TableCell::new(TableCellType::Header)
-                    .with_attributes([
-                        ("id", "filter-timestamp"),
-                        ("class", "px-6 py-4 w-32")
-                    ])
-                    .with_raw("Timestamp")
-                )
-                .with_cell(TableCell::new(TableCellType::Header)
-                    .with_attributes([
-                        ("id", "filter-pr"),
-                        ("class", "px-6 py-4 w-50")
-                    ])
-                    .with_raw("Pull Request")
-                )
-                .with_cell(TableCell::new(TableCellType::Header)
-                    .with_attributes([
-                        ("id", "filter-board"),
-                        ("class", "px-6 py-4 min-w-[200px]")
-                    ])
-                    .with_raw("Board / Config")
-                )
-                .with_cell(TableCell::new(TableCellType::Header)
-                    .with_attributes([
-                        ("id", "filter-error-warning"),
-                        ("class", "px-6 py-4 min-w-[400px] w-full")
-                    ])
-                    .with_raw("Error / Warning")
-                )
-            )
-        .with_tbody_attributes([
-            ("id", "error-table-body"),
-            ("class", "divide-y divide-gray-100")
-        ]);
-
-    // For every Merged Job-PR-Build...
-    let mut prev_msg = None::<String>;
-    for build_job_pr in merged_json_array {
-        let timestamp = build_job_pr["build_timestamp"].as_str().unwrap_or_default();
-        let pr = build_job_pr["pr_number"].as_u64().map(|n| n.to_string()).unwrap_or_default();
-        let pr_url = build_job_pr["pr_url"].as_str().unwrap_or_default();
-        let pr_title = build_job_pr["pr_title"].as_str().unwrap_or_default();
-        let board = build_job_pr["build_board"].as_str().unwrap_or_default();
-        let config = build_job_pr["build_config"].as_str().unwrap_or_default();
-        let msg = build_job_pr["build_msg"].as_str().unwrap_or_default();
-        let build_url = build_job_pr["build_url"].as_str().unwrap_or_default();
-        let score = build_job_pr["build_score"].as_f64().unwrap_or_default();
-        let mut pr_title = pr_title.to_string();
-        pr_title.truncate(50);
-        let timestamp = timestamp.replace("T", "<br>");
-
-        // Shorten duplicate messages to "(Same)"
-        let msg =
-            if Some(msg.to_string()) == prev_msg {
-                "(Same)".to_string()
-            } else {
-                prev_msg = Some(msg.to_string());
-                msg.to_string()
-            };
-
-        // Render Errors in Red
-        let error_warning = 
-            if score == 0.0 { "error bg-red-900" }
-            else if score == 1.0 { "success bg-green-900" }
-            else { "warning bg-gray-900" };
-        let error_warning = error_warning.to_string() + " px-6 py-4 block text-gray-300 rounded-lg p-3 font-mono text-xs leading-relaxed hover:bg-gray-800 transition-colors border border-gray-800 shadow-inner group-hover:border-gray-600 break-all whitespace-normal";
-
-        let row = TableRow::new()
-            .with_attributes([("class", "hover:bg-gray-50/80 transition-colors group align-top")])
-            .with_cell(TableCell::default()
-                .with_attributes([("class", "px-6 py-4 text-xs font-medium text-gray-900")])
-                .with_raw(timestamp)
-            )
-            .with_cell(TableCell::default()
-                .with_attributes([("class", "px-6 py-4 items-start gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-medium text-sm leading-snug break-words")])
-                .with_link(pr_url, format!("{pr}: {pr_title}").replace(":", ":<br>"))
-            )
-            .with_cell(TableCell::default()
-                .with_attributes([("class", "px-6 py-4 items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-800 border border-slate-200 break-all")])
-                .with_raw(format!("{board}<br>:{config}"))
-            )
-            .with_cell(TableCell::default()
-                .with_attributes([("class", error_warning.as_str())])
-                .with_link(build_url, msg)
-            );
-        table.add_custom_body_row(row);
-    }
-    table    
-}
-
-/// Scan the Job-PR JSON for Jobs that were started 24 hours ago or later.
-/// Return the Jobs as a JSON Array.
-/// Skip the earlier Jobs for the same PRs.
-fn fetch_recent_jobs() -> serde_json::Value {
+/// Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later.
+/// Return the Run ID Array and Jobs JSON Array.
+/// Allow Multiple Run IDs for the same PR.
+fn fetch_recent_jobs() -> (Vec<u64>, Vec<serde_json::Value>) {
+    // TODO: Change to a File Stream Reader to avoid loading the entire JSON into memory
     // Open the Job-PR JSON File and create a Streaming JSON Reader
     let file = std::fs::read(JOB_PR_JSON).unwrap();
     let json_reader = SimpleJsonReader::new(file.as_slice());
@@ -257,10 +69,10 @@ fn fetch_recent_jobs() -> serde_json::Value {
     let mut found_prs = Vec::<u64>::new();
     let mut recent_jobs = Vec::<u64>::new();
     json_reader.read_array_items(|array_reader| {
-        // Fetch the Run ID, Started At and PR Number:
-        // {"job_startedAt": "2026-04-01T22:06:23Z", "job_databaseId": 23873176516, "pr_number": 18654, ...
+        // Fetch the Run ID, Updated At and PR Number:
+        // {"job_updatedAt": "2026-04-01T22:06:23Z", "job_databaseId": 23873176516, "pr_number": 18654, ...
         let mut run_id = None::<u64>;
-        let mut started_at = None::<String>;
+        let mut updated_at = None::<String>;
         let mut pr_number = None::<u64>;
         let mut job_name = None::<String>;
         array_reader.read_object_owned_names(|name, value_reader| {
@@ -273,9 +85,9 @@ fn fetch_recent_jobs() -> serde_json::Value {
                     let val: u64 = value_reader.read_number().unwrap().unwrap();
                     pr_number = Some(val);
                 },
-                "job_startedAt" => {
+                "job_updatedAt" => {
                     let val: String = value_reader.read_string().unwrap();
-                    started_at = Some(val);
+                    updated_at = Some(val);
                 },
                 "job_name" => {
                     let val: String = value_reader.read_string().unwrap();
@@ -285,26 +97,26 @@ fn fetch_recent_jobs() -> serde_json::Value {
             }
             Ok(())
         })?;
-        if run_id.is_none() || started_at.is_none() || pr_number.is_none() || job_name.is_none() {
+        if run_id.is_none() || updated_at.is_none() || pr_number.is_none() || job_name.is_none() {
             return Err("Missing required fields".into());
         }
         let run_id = run_id.unwrap();
-        let started_at = started_at.unwrap();
+        let updated_at = updated_at.unwrap();
         let pr_number = pr_number.unwrap();
         let job_name = job_name.unwrap();
         if job_name != "Build" { return Ok(()); }
 
-        // Stop if the Job-PR is Older than 48 Hours        
-        let started_at = chrono::DateTime::parse_from_rfc3339(&started_at).unwrap();
+        // Stop if the Job-PR is not the same date as today        
+        let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at).unwrap();
         let now = chrono::Utc::now();
-        if now.signed_duration_since(started_at) > chrono::Duration::hours(48) {
-            return Err("Older than 48 hours".into());
+        if now.date_naive() != updated_at.date_naive() {
+            println!("Stopping at Run ID {run_id} for PR#{pr_number} because it was updated at {updated_at} which is not today {now}");
+            return Err("Not updated today".into());
         }
 
-        // Skip if the PR was already found in an earlier Job-PR
-        if found_prs.contains(&pr_number) { return Ok(()); }
-        found_prs.push(pr_number);
-
+        // Remember the PR Number
+        if !found_prs.contains(&pr_number) { found_prs.push(pr_number); }
+        
         // Add the Job-PR to the Recent Jobs Array
         recent_jobs.push(run_id);
         Ok(())
@@ -312,8 +124,8 @@ fn fetch_recent_jobs() -> serde_json::Value {
 
     // For each Recent Job-PR, Fetch the Job-PR JSON and add it to the Result Array
     let mut recent_jobs_json = Vec::<serde_json::Value>::new();
-    for run_id in recent_jobs {
-        let job_pr = fetch_job_pr(run_id);
+    for run_id in &recent_jobs {
+        let job_pr = fetch_job_pr(*run_id);
         if let Ok(job_pr) = job_pr {
             // Ignore all Closed and Merged PRs
             let job_pr_value: serde_json::Value = serde_json::from_str(&job_pr).unwrap();
@@ -322,7 +134,7 @@ fn fetch_recent_jobs() -> serde_json::Value {
             recent_jobs_json.push(job_pr_value);
         }
     }
-    serde_json::Value::Array(recent_jobs_json)
+    (recent_jobs, recent_jobs_json)
 }
 
 /// Render the Recent Jobs as HTML Table
