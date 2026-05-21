@@ -1,2 +1,3 @@
-# nuttx-github-metrics
-Updated GitHub Runner Metrics for Apache NuttX Project
+# Updated GitHub Runner Metrics for Apache NuttX Project
+
+Computed based on Downloaded GitHub Job Status. See https://github.com/apache/nuttx/issues/18906
