@@ -1,4 +1,9 @@
-//! Export the Jobs, PRs and Builds from the NuttX GitHub Jobs into a Static HTML
+//! Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later.
+//! For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups (arm-01).
+//! For Each Run ID and Target Group: Scan the success / warning / error folders for the min and max timestamp.
+//! For Each Run ID and Target Group: Compute the GitHub Runner Minutes based on max timestamp - min timestamp.
+//! For Each Run ID: Add up the GitHub Runner Minutes for all Target Groups.
+//! Add up all Target Groups to get the Total GitHub Runner Minutes since UTC 00:00.
 use std::{collections::HashMap, fs::read_dir, thread::sleep, time::Duration};
 use build_html::{Html, HtmlContainer, Table, TableCell, TableCellType, TableRow};
 use struson::{
