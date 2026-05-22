@@ -81,7 +81,7 @@ fn fetch_recent_jobs() -> (Vec<u64>, Vec<serde_json::Value>) {
         let job_name = job_name.unwrap();
         if job_name != "Build" { return Ok(()); }
 
-        // Stop if the Job-PR is not the same date as today        
+        // Stop if the Job-PR is not the same date as today
         let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at).unwrap();
         let now = chrono::Utc::now();
         if now.date_naive() != updated_at.date_naive() {
@@ -113,8 +113,10 @@ fn fetch_recent_jobs() -> (Vec<u64>, Vec<serde_json::Value>) {
 /// For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups,
 /// like arm-01: https://github.com/lupyuen/nuttx-github-jobs
 fn fetch_target_groups(run_id: u64) -> Vec<String> {
-    // Remember the Target Groups
+    // Remember the Target Groups and the min / max timestamps for each Target Group
     let mut target_groups = HashSet::<String>::new();
+    let mut target_group_timestamp_min = HashMap::<String, String>::new();
+    let mut target_group_timestamp_max = HashMap::<String, String>::new();
 
     // Iterate through the Success, Error and Warning Folders for the Run ID
     for folder in ["success", "error", "warning"] {
@@ -138,12 +140,38 @@ fn fetch_target_groups(run_id: u64) -> Vec<String> {
                 if !target_groups.contains(target_group) {
                     target_groups.insert(target_group.to_string());
                 }
+
+                // For Each Run ID and Target Group:
+                // Scan the success / warning / error folders
+                // for the min and max timestamp
+                let file = std::fs::read_to_string(path.clone()).unwrap();
+                let json_value: serde_json::Value = serde_json::from_str(&file).unwrap();
+                let timestamp = json_value["timestamp"].as_str().unwrap();
+                println!("Run ID {run_id}: Target Group {target_group}: Timestamp: {timestamp}");
+
+                if !target_group_timestamp_min.contains_key(target_group) || *timestamp < *target_group_timestamp_min[target_group] {
+                    target_group_timestamp_min.insert(target_group.to_string(), timestamp.to_string());
+                }
+                if !target_group_timestamp_max.contains_key(target_group) || *timestamp > *target_group_timestamp_max[target_group] {
+                    target_group_timestamp_max.insert(target_group.to_string(), timestamp.to_string());
+                }
             }
         }
     }
     // Sort the Target Groups
     let mut target_groups = target_groups.into_iter().collect::<Vec<_>>();
     target_groups.sort();
+
+    // Get the Min Timestamp, Max Timestamp and GitHub Runner Minutes for each Target Group
+    for target_group in &target_groups {
+        let timestamp_min = target_group_timestamp_min.get(target_group).unwrap();
+        let timestamp_max = target_group_timestamp_max.get(target_group).unwrap();
+        println!("Run ID {run_id}: Target Group {target_group}: Min Timestamp: {timestamp_min}, Max Timestamp: {timestamp_max}");
+        let timestamp_min = chrono::DateTime::parse_from_rfc3339(&(timestamp_min.to_string() + "Z")).unwrap();
+        let timestamp_max = chrono::DateTime::parse_from_rfc3339(&(timestamp_max.to_string() + "Z")).unwrap();
+        let github_runner_minutes = (timestamp_max - timestamp_min).num_minutes();
+        println!("Run ID {run_id}: Target Group {target_group}: Min Timestamp: {timestamp_min}, Max Timestamp: {timestamp_max}, GitHub Runner Minutes: {github_runner_minutes}");
+    }
     target_groups
 }
 
