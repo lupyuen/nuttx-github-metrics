@@ -22,8 +22,14 @@ fn main() {
 
     // For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs    
     for run_id in &recent_jobs {
-        let target_groups = fetch_target_groups(*run_id);
+        let (target_groups, total_github_runner_minutes) = compute_github_runner_minutes(*run_id);
         println!("Run ID {run_id}: Target Groups: {target_groups:?}");
+        println!("Run ID {run_id}: Total GitHub Runner Minutes: {total_github_runner_minutes}");
+        
+        // Inflate by 22% to account for missing jobs (Windows) and missing tasks (Docker Pull)
+        let adjusted_github_runner_minutes = (total_github_runner_minutes as f64 * 1.22) as u64;
+        println!("Run ID {run_id}: Adjusted GitHub Runner Minutes: {adjusted_github_runner_minutes}");
+        println!("Compare with https://github.com/apache/nuttx/actions/runs/{run_id}/usage")
     }
 }
 
@@ -112,7 +118,8 @@ fn fetch_recent_jobs() -> (Vec<u64>, Vec<serde_json::Value>) {
 
 /// For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups,
 /// like arm-01: https://github.com/lupyuen/nuttx-github-jobs
-fn fetch_target_groups(run_id: u64) -> Vec<String> {
+/// Return the Target Group Array for the Run ID, and the Total GitHub Runner Minutes for the Run ID.
+fn compute_github_runner_minutes(run_id: u64) -> (Vec<String>, u64) {
     // Remember the Target Groups and the min / max timestamps for each Target Group
     let mut target_groups = HashSet::<String>::new();
     let mut target_group_timestamp_min = HashMap::<String, String>::new();
@@ -161,18 +168,18 @@ fn fetch_target_groups(run_id: u64) -> Vec<String> {
     target_groups.sort();
 
     // Get the Min Timestamp, Max Timestamp and GitHub Runner Minutes for each Target Group
-    let mut total_github_runner_minutes = 0;
+    let mut total_github_runner_minutes: u64 = 0;
     for target_group in &target_groups {
         let timestamp_min = target_group_timestamp_min.get(target_group).unwrap();
         let timestamp_max = target_group_timestamp_max.get(target_group).unwrap();
         let timestamp_min = chrono::DateTime::parse_from_rfc3339(&(timestamp_min.to_string() + "Z")).unwrap();
         let timestamp_max = chrono::DateTime::parse_from_rfc3339(&(timestamp_max.to_string() + "Z")).unwrap();
-        let github_runner_minutes = (timestamp_max - timestamp_min).num_minutes();
-        println!("Run ID {run_id}: Target Group {target_group}: Min Timestamp: {timestamp_min}, Max Timestamp: {timestamp_max}, GitHub Runner Minutes: {github_runner_minutes}");
+        let github_runner_minutes = (timestamp_max - timestamp_min).num_minutes() as u64;
+        // println!("Run ID {run_id}: Target Group {target_group}: Min Timestamp: {timestamp_min}, Max Timestamp: {timestamp_max}, GitHub Runner Minutes: {github_runner_minutes}");
         total_github_runner_minutes += github_runner_minutes;
     }
-    println!("Run ID {run_id}: Total GitHub Runner Minutes: {total_github_runner_minutes}");
-    target_groups
+    // println!("Run ID {run_id}: Total GitHub Runner Minutes: {total_github_runner_minutes}");
+    (target_groups, total_github_runner_minutes)
 }
 
 /// Fetch the Job-PR JSON for a Given Run ID (Job ID)
