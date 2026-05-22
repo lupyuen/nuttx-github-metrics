@@ -1,5 +1,5 @@
-//! Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later.
-//! For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups (arm-01).
+//! Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later: https://github.com/lupyuen/nuttx-github-jobs/blob/main/nuttx-github-jobs.json
+//! For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs
 //! For Each Run ID and Target Group: Scan the success / warning / error folders for the min and max timestamp.
 //! For Each Run ID and Target Group: Compute the GitHub Runner Minutes based on max timestamp - min timestamp.
 //! For Each Run ID: Add up the GitHub Runner Minutes for all Target Groups.
