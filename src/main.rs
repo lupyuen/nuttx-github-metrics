@@ -4,7 +4,7 @@
 //! For Each Run ID and Target Group: Compute the GitHub Runner Minutes based on max timestamp - min timestamp.
 //! For Each Run ID: Add up the GitHub Runner Minutes for all Target Groups.
 //! Add up all Target Groups to get the Total GitHub Runner Minutes since UTC 00:00.
-use std::{collections::HashMap, fs::read_dir, thread::sleep, time::Duration};
+use std::{collections::{HashMap, HashSet}, fs::read_dir, thread::sleep, time::Duration};
 use build_html::{Html, HtmlContainer, Table, TableCell, TableCellType, TableRow};
 use struson::{
     json_path,
@@ -16,9 +16,15 @@ use struson::{
 const JOB_PR_JSON: &str = "../nuttx-github-jobs/nuttx-github-jobs.json";
 
 fn main() {
-    // Fetch the Recent Jobs from the Job-PR JSON
+    // Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later: https://github.com/lupyuen/nuttx-github-jobs/blob/main/nuttx-github-jobs.json
     let (recent_jobs, recent_jobs_json) = fetch_recent_jobs();
     println!("Recent Jobs: {recent_jobs:?}\n");
+
+    // For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs    
+    for run_id in &recent_jobs {
+        let target_groups = fetch_target_groups(*run_id);
+        println!("Run ID {run_id}: Target Groups: {target_groups:?}");
+    }
 }
 
 /// Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later: https://github.com/lupyuen/nuttx-github-jobs/blob/main/nuttx-github-jobs.json
@@ -104,98 +110,41 @@ fn fetch_recent_jobs() -> (Vec<u64>, Vec<serde_json::Value>) {
     (recent_jobs, recent_jobs_json)
 }
 
-/// For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs
-// fn merge_job_pr_with_build() -> Vec<serde_json::Value> {
-//     // Remember the Merged Job-PR-Build JSON for each Run ID
-//     let mut merged_json_array = Vec::<serde_json::Value>::new();
+/// For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups,
+/// like arm-01: https://github.com/lupyuen/nuttx-github-jobs
+fn fetch_target_groups(run_id: u64) -> Vec<String> {
+    // Remember the Target Groups
+    let mut target_groups = HashSet::<String>::new();
 
-//     // Iterate through the Error and Warning Folders
-//     for folder in ["error", "warning"] {
-//         let path = format!("../nuttx-github-jobs/{folder}");
-//         if !std::path::Path::new(&path).exists() {
-//             println!("Folder {path} does not exist. Please parse-nuttx-builds first.");
-//             return merged_json_array;
-//         }
+    // Iterate through the Success, Error and Warning Folders for the Run ID
+    for folder in ["success", "error", "warning"] {
+        let path = format!("../nuttx-github-jobs/{folder}/{run_id}");
+        if !std::path::Path::new(&path).exists() {
+            println!("Skipping missing folder {path}");
+            continue;
+        }
+        // Iterate through all filenames in the folder,
+        // like arm-01:at32f437-mini:adc.json
+        let mut entries: Vec<_> = read_dir(&path).unwrap().collect();
+        for entry in entries.into_iter() {
+            let entry = entry.unwrap();
+            let path = entry.path();
 
-//         // Iterate Backwards through all Run IDs (Job IDs) in the Error and Warning Folders
-//         // Like ../nuttx-github-jobs/error/23712816820
-//         let mut entries: Vec<_> = read_dir(&path).unwrap().collect();
-//         entries.sort_by_key(|entry| entry.as_ref().unwrap().path());
-//         for entry in entries.into_iter().rev() {
-//             let entry = entry.unwrap();
-//             let path = entry.path();
-//             println!("Found Build Path: {path:?}");
-
-//             // Run ID is the last part of the path: 23712816820
-//             let run_id = path.file_name().unwrap().to_str().unwrap();
-//             if run_id.starts_with(".") { continue; }
-//             let run_id = run_id.parse::<u64>();
-//             let run_id = match run_id {
-//                 Ok(id) => id,
-//                 Err(e) => {
-//                     println!("Skipping invalid Run ID: {e}");
-//                     sleep(Duration::from_secs(1));
-//                     continue;
-//                 }
-//             };
-//             println!("Run ID: {run_id}");
-
-//             // For each Run ID (Job ID), Fetch the Job-PR JSON
-//             let job_pr = fetch_job_pr(run_id);
-//             let job_pr = match job_pr {
-//                 Ok(json) => json,
-//                 Err(e) => {
-//                     println!("Error fetching Job-PR JSON: {e}");
-//                     sleep(Duration::from_secs(1));
-//                     continue;
-//                 }
-//             };
-
-//             // Stop iterating when Job Timestamp is too old
-//             let job_pr_json: serde_json::Value = serde_json::from_str(&job_pr).unwrap();
-//             let timestamp = job_pr_json["job_startedAt"].as_str().unwrap();
-//             let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp).unwrap();
-//             if timestamp < chrono::Utc::now() - chrono::Duration::days(28) {
-//                 println!("Build is too old. Stopping iteration for folder {folder}");
-//                 break;
-//             }
-
-//             // Generate the Merged Job-PR-Build JSON for each Run ID:
-//             // Iterate through all Build JSON files in the folder
-//             // Like ../nuttx-github-jobs/error/23712816820/xtensa-03:lckfb-szpi-esp32s3:uvc.json
-//             let entries: Vec<_> = read_dir(&path).unwrap().collect();
-//             for entry in entries.into_iter() {
-//                 let entry = entry.unwrap();
-//                 let path = entry.path().to_str().unwrap().to_string();
-//                 println!("Found Build JSON: {path}");
-
-//                 // Merge the Build JSON into the Job-PR JSON
-//                 let merged_json = merge_build_json(&path, &job_pr);
-//                 let merged_json = match merged_json {
-//                     Ok(json) => json,
-//                     Err(e) => {
-//                         println!("Error merging Build JSON: {e}");
-//                         sleep(Duration::from_secs(1));
-//                         continue;
-//                     }
-//                 };
-//                 println!("merged_json:\n{merged_json}\n");
-
-//                 // Add the Merged JSON into a JSON Array
-//                 let merged_json_value: serde_json::Value = serde_json::from_str(&merged_json).unwrap();
-//                 merged_json_array.push(merged_json_value.clone());
-//             }
-//         }
-//     }
-
-//     // Sort the JSON Array by Timestamp in Descending Order (Latest First)
-//     merged_json_array.sort_by(|a, b| {
-//         let a_timestamp = a["build_timestamp"].as_str().unwrap_or_default();
-//         let b_timestamp = b["build_timestamp"].as_str().unwrap_or_default();
-//         b_timestamp.cmp(a_timestamp)
-//     });    
-//     merged_json_array
-// }
+            // Target Group is the first part of the filename: arm-01
+            let filename = path.file_name().unwrap().to_str().unwrap();
+            if filename.starts_with(".") { continue; }
+            if !filename.contains(":") { println!("Skipping invalid filename {filename}"); continue; }
+            let target_group = filename.split(':').next().unwrap();
+            if !target_groups.contains(target_group) {
+                target_groups.insert(target_group.to_string());
+            }
+        }
+    }
+    // Sort the Target Groups
+    let mut target_groups = target_groups.into_iter().collect::<Vec<_>>();
+    target_groups.sort();
+    target_groups
+}
 
 /// Fetch the Job-PR JSON for a Given Run ID (Job ID)
 fn fetch_job_pr(run_id: u64) -> Result<String, Box<dyn std::error::Error>> {
