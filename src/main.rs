@@ -134,9 +134,10 @@ fn fetch_target_groups(run_id: u64) -> Vec<String> {
             let filename = path.file_name().unwrap().to_str().unwrap();
             if filename.starts_with(".") { continue; }
             if !filename.contains(":") { println!("Skipping invalid filename {filename}"); continue; }
-            let target_group = filename.split(':').next().unwrap();
-            if !target_groups.contains(target_group) {
-                target_groups.insert(target_group.to_string());
+            if let Some(target_group) = filename.split(':').next() {
+                if !target_groups.contains(target_group) {
+                    target_groups.insert(target_group.to_string());
+                }
             }
         }
     }
