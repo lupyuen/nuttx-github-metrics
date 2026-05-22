@@ -2,6 +2,10 @@
 
 Computed based on Downloaded GitHub Job Status. See https://github.com/apache/nuttx/issues/18906
 
+```bash
+pushd ../nuttx-github-jobs ; git pull ; popd ; cargo run
+```
+
 1. Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later: https://github.com/lupyuen/nuttx-github-jobs/blob/main/nuttx-github-jobs.json
 
 1. For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs
