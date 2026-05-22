@@ -19,18 +19,24 @@ fn main() {
     let (recent_jobs, _) = fetch_recent_jobs();
     println!("Recent Jobs: {recent_jobs:?}\n");
 
-    // For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs    
+    // For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs
+    let mut total_github_runner_minutes = 0;
+    let mut total_adjusted_github_runner_minutes = 0;
     for run_id in &recent_jobs {
-        let (target_groups, total_github_runner_minutes) = compute_github_runner_minutes(*run_id);
+        let (target_groups, github_runner_minutes) = compute_github_runner_minutes(*run_id);
         println!("Run ID {run_id}: Target Groups: {target_groups:?}");
-        println!("Run ID {run_id}: Total GitHub Runner Minutes: {total_github_runner_minutes}");
-        if total_github_runner_minutes == 0 { continue; }
+        println!("Run ID {run_id}: GitHub Runner Minutes: {github_runner_minutes}");
+        if github_runner_minutes == 0 { continue; }
         
-        // Inflate by 22% to account for missing jobs (Windows) and missing tasks (Docker Pull)
-        let adjusted_github_runner_minutes = (total_github_runner_minutes as f64 * 1.22) as u64;
+        // Inflate the minutes to account for missing jobs (Windows) and missing steps (Docker Pull)
+        let adjusted_github_runner_minutes = (github_runner_minutes as f64 * 1.71) as u64;
         println!("Run ID {run_id}: Adjusted GitHub Runner Minutes: {adjusted_github_runner_minutes}");
-        println!("Compare with https://github.com/apache/nuttx/actions/runs/{run_id}/usage")
+        println!("Compare with https://github.com/apache/nuttx/actions/runs/{run_id}/usage");
+        total_github_runner_minutes += github_runner_minutes;
+        total_adjusted_github_runner_minutes += adjusted_github_runner_minutes;
     }
+    println!("\nTotal GitHub Runner Minutes: {total_github_runner_minutes}");
+    println!("Total Adjusted GitHub Runner Minutes: {total_adjusted_github_runner_minutes}");
 }
 
 /// Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later: https://github.com/lupyuen/nuttx-github-jobs/blob/main/nuttx-github-jobs.json
@@ -45,9 +51,6 @@ fn fetch_recent_jobs() -> (Vec<u64>, Vec<serde_json::Value>) {
     // For each Job-PR record in the array...
     let mut found_prs = Vec::<u64>::new();
     let mut recent_jobs = Vec::<u64>::new();
-
-    found_prs.push(18933); //// TODO: Remove
-    recent_jobs.push(26231721423); //// TODO: Remove
 
     json_reader.read_array_items(|array_reader| {
         // Fetch the Run ID, Updated At and PR Number:
