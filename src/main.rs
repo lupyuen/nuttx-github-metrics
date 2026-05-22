@@ -4,8 +4,7 @@
 //! For Each Run ID and Target Group: Compute the GitHub Runner Minutes based on max timestamp - min timestamp.
 //! For Each Run ID: Add up the GitHub Runner Minutes for all Target Groups.
 //! Add up all Target Groups to get the Total GitHub Runner Minutes since UTC 00:00.
-use std::{collections::{HashMap, HashSet}, fs::read_dir, thread::sleep, time::Duration};
-use build_html::{Html, HtmlContainer, Table, TableCell, TableCellType, TableRow};
+use std::{collections::{HashMap, HashSet}, fs::read_dir};
 use struson::{
     json_path,
     reader::{JsonReader, JsonStreamReader, simple::{SimpleJsonReader, ValueReader}},
@@ -17,7 +16,7 @@ const JOB_PR_JSON: &str = "../nuttx-github-jobs/nuttx-github-jobs.json";
 
 fn main() {
     // Scan the Job-PR JSON for the Run IDs that were updated UTC 00:00 or later: https://github.com/lupyuen/nuttx-github-jobs/blob/main/nuttx-github-jobs.json
-    let (recent_jobs, recent_jobs_json) = fetch_recent_jobs();
+    let (recent_jobs, _) = fetch_recent_jobs();
     println!("Recent Jobs: {recent_jobs:?}\n");
 
     // For Each Run ID: Scan the success / warning / error folders to fetch all Target Groups, like arm-01: https://github.com/lupyuen/nuttx-github-jobs    
@@ -25,6 +24,7 @@ fn main() {
         let (target_groups, total_github_runner_minutes) = compute_github_runner_minutes(*run_id);
         println!("Run ID {run_id}: Target Groups: {target_groups:?}");
         println!("Run ID {run_id}: Total GitHub Runner Minutes: {total_github_runner_minutes}");
+        if total_github_runner_minutes == 0 { continue; }
         
         // Inflate by 22% to account for missing jobs (Windows) and missing tasks (Docker Pull)
         let adjusted_github_runner_minutes = (total_github_runner_minutes as f64 * 1.22) as u64;
@@ -134,7 +134,7 @@ fn compute_github_runner_minutes(run_id: u64) -> (Vec<String>, u64) {
         }
         // Iterate through all filenames in the folder,
         // like arm-01:at32f437-mini:adc.json
-        let mut entries: Vec<_> = read_dir(&path).unwrap().collect();
+        let entries: Vec<_> = read_dir(&path).unwrap().collect();
         for entry in entries.into_iter() {
             let entry = entry.unwrap();
             let path = entry.path();
