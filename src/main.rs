@@ -147,8 +147,6 @@ fn fetch_target_groups(run_id: u64) -> Vec<String> {
                 let file = std::fs::read_to_string(path.clone()).unwrap();
                 let json_value: serde_json::Value = serde_json::from_str(&file).unwrap();
                 let timestamp = json_value["timestamp"].as_str().unwrap();
-                println!("Run ID {run_id}: Target Group {target_group}: Timestamp: {timestamp}");
-
                 if !target_group_timestamp_min.contains_key(target_group) || *timestamp < *target_group_timestamp_min[target_group] {
                     target_group_timestamp_min.insert(target_group.to_string(), timestamp.to_string());
                 }
@@ -163,15 +161,17 @@ fn fetch_target_groups(run_id: u64) -> Vec<String> {
     target_groups.sort();
 
     // Get the Min Timestamp, Max Timestamp and GitHub Runner Minutes for each Target Group
+    let mut total_github_runner_minutes = 0;
     for target_group in &target_groups {
         let timestamp_min = target_group_timestamp_min.get(target_group).unwrap();
         let timestamp_max = target_group_timestamp_max.get(target_group).unwrap();
-        println!("Run ID {run_id}: Target Group {target_group}: Min Timestamp: {timestamp_min}, Max Timestamp: {timestamp_max}");
         let timestamp_min = chrono::DateTime::parse_from_rfc3339(&(timestamp_min.to_string() + "Z")).unwrap();
         let timestamp_max = chrono::DateTime::parse_from_rfc3339(&(timestamp_max.to_string() + "Z")).unwrap();
         let github_runner_minutes = (timestamp_max - timestamp_min).num_minutes();
         println!("Run ID {run_id}: Target Group {target_group}: Min Timestamp: {timestamp_min}, Max Timestamp: {timestamp_max}, GitHub Runner Minutes: {github_runner_minutes}");
+        total_github_runner_minutes += github_runner_minutes;
     }
+    println!("Run ID {run_id}: Total GitHub Runner Minutes: {total_github_runner_minutes}");
     target_groups
 }
 
