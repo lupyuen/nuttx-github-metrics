@@ -29,7 +29,7 @@ fn main() {
         if github_runner_minutes == 0 { continue; }
         
         // Inflate the minutes to account for missing jobs (Windows) and missing steps (Docker Pull)
-        let adjusted_github_runner_minutes = (github_runner_minutes as f64 * 1.14) as u64;
+        let adjusted_github_runner_minutes = (github_runner_minutes as f64 * 1.143) as u64;
         println!("Run ID {run_id}: Adjusted GitHub Runner Minutes: {adjusted_github_runner_minutes}");
         println!("Compare with https://github.com/apache/nuttx/actions/runs/{run_id}/usage");
         total_github_runner_minutes += github_runner_minutes;
